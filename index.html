@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>國小自然期中考 - 試卷分析與班級錯題診斷儀表板</title>
+    <!-- 引入 Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --bg-color: #F3F4F6;
+            --card-bg: #FFFFFF;
+            --text-main: #1F2937;
+            --text-muted: #6B7280;
+            --border-color: #E5E7EB;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', "Microsoft JhengHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .dashboard {
+            width: 100%;
+            max-width: 1400px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 頂部控制列 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--card-bg);
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.6rem;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            background: #EEF2FF;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid #C7D2FE;
+        }
+
+        .controls label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            color: var(--primary-hover);
+            font-size: 1.1rem;
+            user-select: none;
+        }
+
+        .controls input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+
+        /* 圖表區塊 */
+        .chart-container {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            position: relative;
+            height: 60vh;
+            min-height: 450px;
+            width: 100%;
+        }
+
+        /* 數據表格區塊 */
+        .table-wrapper {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .table-header-title {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #374151;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            min-width: 1000px;
+        }
+
+        th, td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
+        }
+
+        th {
+            background-color: #F9FAFB;
+            font-weight: 600;
+            color: #4B5563;
+            position: sticky;
+            top: 0;
+            white-space: nowrap;
+        }
+
+        tbody tr:hover {
+            background-color: #F3F4F6;
+        }
+
+        /* 動態隱藏/顯示的題目欄位 */
+        .question-col {
+            display: none;
+            max-width: 400px;
+            line-height: 1.5;
+            color: #4B5563;
+        }
+
+        .show-text .question-col {
+            display: table-cell;
+        }
+
+        /* 錯題率徽章 */
+        .badge {
+            background-color: #FEE2E2;
+            color: #991B1B;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            display: inline-block;
+        }
+        
+        .badge.warning {
+            background-color: #FEF3C7;
+            color: #92400E;
+        }
+
+        .badge.good {
+            background-color: #D1FAE5;
+            color: #065F46;
+        }
+
+        /* RWD 適應 */
+        @media (max-width: 768px) {
+            .header { flex-direction: column; align-items: flex-start; }
+            .chart-container { height: 50vh; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard">
+        <!-- 頂部區塊 -->
+        <div class="header">
+            <h1>📊 試卷分析與班級錯題診斷儀表板</h1>
+            <div class="controls">
+                <label>
+                    <input type="checkbox" id="showTextCheckbox">
+                    顯示題目內容
+                </label>
+            </div>
+        </div>
+
+        <!-- 視覺化長條圖 -->
+        <div class="chart-container">
+            <canvas id="errorRateChart"></canvas>
+        </div>
+
+        <!-- 各班錯題明細表 -->
+        <div class="table-wrapper">
+            <div class="table-header-title">📋 試題分析明細表 (依全校錯題率排序)</div>
+            <div class="table-responsive" id="tableContainer">
+                <table id="dataTable">
+                    <thead>
+                        <tr>
+                            <th>排名</th>
+                            <th>題號</th>
+                            <th class="question-col">完整題目內容</th>
+                            <th>全校錯題率</th>
+                            <th>錯題總人數</th>
+                            <!-- 班級欄位由 JS 動態生成 -->
+                            <th id="classHeadersPlaceholder"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- 資料由 JS 填入 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === 經過 Python 運算並清理過的 JSON 資料 ===
+        const reportData = [{"id": "配合2-5", "text": "請閱讀各題敘述，判斷『 』標示的名詞是屬於水的哪一種形態，並將對應的英文代號填在答案卷上：A固態  B液態  C氣態 (5)用茶壺燒開水時，壺口上方冒出的『白煙』", "total_errors": 91, "total_students": 165, "total_rate": 55.2, "classes": {"601": {"errors": 10, "students": 18, "rate": 55.6}, "605": {"errors": 13, "students": 25, "rate": 52.0}, "606": {"errors": 18, "students": 25, "rate": 72.0}, "607": {"errors": 15, "students": 23, "rate": 65.2}, "612": {"errors": 14, "students": 25, "rate": 56.0}, "613": {"errors": 7, "students": 25, "rate": 28.0}, "616": {"errors": 14, "students": 24, "rate": 58.3}}}, {"id": "是非5", "text": "颱風中心的氣壓數值，通常會比颱風外圍其他地方的氣壓數值還要高，因此颱風風力極強。", "total_errors": 81, "total_students": 165, "total_rate": 49.1, "classes": {"601": {"errors": 10, "students": 18, "rate": 55.6}, "605": {"errors": 11, "students": 25, "rate": 44.0}, "606": {"errors": 16, "students": 25, "rate": 64.0}, "607": {"errors": 10, "students": 23, "rate": 43.5}, "612": {"errors": 8, "students": 25, "rate": 32.0}, "613": {"errors": 12, "students": 25, "rate": 48.0}, "616": {"errors": 14, "students": 24, "rate": 58.3}}}, {"id": "是非4", "text": "在地面天氣圖上標示「L」的低氣壓中心，其周圍氣壓是由內而外依次遞減，愈往外數值愈低。", "total_errors": 53, "total_students": 165, "total_rate": 32.1, "classes": {"601": {"errors": 4, "students": 18, "rate": 22.2}, "605": {"errors": 9, "students": 25, "rate": 36.0}, "606": {"errors": 8, "students": 25, "rate": 32.0}, "607": {"errors": 12, "students": 23, "rate": 52.2}, "612": {"errors": 10, "students": 25, "rate": 40.0}, "613": {"errors": 4, "students": 25, "rate": 16.0}, "616": {"errors": 6, "students": 24, "rate": 25.0}}}, {"id": "選擇10", "text": "10.冬季或春季時，臺灣西部海域若剛好遇到「（西）南風將潮溼溫暖的空氣帶過來，當空氣遇到下方較冷的海水」，容易發生什麼天氣變化？    (1)容易引發劇烈的熱帶氣旋（颱風）  (2)容易讓空氣中的水氣遇冷起霧（海霧） (3)容易導致該海域的水氣結冰降雪 (4)西部沿海會颳起乾燥悶熱的焚風", "total_errors": 51, "total_students": 165, "total_rate": 30.9, "classes": {"601": {"errors": 5, "students": 18, "rate": 27.8}, "605": {"errors": 13, "students": 25, "rate": 52.0}, "606": {"errors": 9, "students": 25, "rate": 36.0}, "607": {"errors": 5, "students": 23, "rate": 21.7}, "612": {"errors": 10, "students": 25, "rate": 40.0}, "613": {"errors": 3, "students": 25, "rate": 12.0}, "616": {"errors": 6, "students": 24, "rate": 25.0}}}, {"id": "選擇24", "text": "24.小瑄利用紙杯進行保溫實驗，他在紙杯外包覆了一層「乾燥的毛巾」。請問，這層毛巾的主要保溫原理是什麼？ (1)毛巾可以自行產生並釋放熱能加熱水杯 (2)毛巾纖維中含有大量靜止空氣，空氣是熱的不良導體，可減少熱傳導 (3)毛巾表面粗糙，容易從周圍空氣中吸收熱量來維持溫度 (4)毛巾的布料能反射大部分的熱輻射", "total_errors": 48, "total_students": 165, "total_rate": 29.1, "classes": {"601": {"errors": 6, "students": 18, "rate": 33.3}, "605": {"errors": 10, "students": 25, "rate": 40.0}, "606": {"errors": 5, "students": 25, "rate": 20.0}, "607": {"errors": 6, "students": 23, "rate": 26.1}, "612": {"errors": 9, "students": 25, "rate": 36.0}, "613": {"errors": 7, "students": 25, "rate": 28.0}, "616": {"errors": 5, "students": 24, "rate": 20.8}}}, {"id": "選擇25", "text": "25.綠建築在進行結構建材設計時，其中為了「降低熱傳導」，綠建築在工程上通常會如何設計？ (1)牆壁採用金屬銅板，以加快白天與黑夜的 熱交換 (2)裝設電動排氣百葉窗，加速外牆內外的空氣交換 (3)外牆選用熱傳導較差的建材，或在牆體間 裝設隔熱工程 (4)外牆全部塗成黑色，以反射陽光中的過多能量", "total_errors": 47, "total_students": 165, "total_rate": 28.5, "classes": {"601": {"errors": 7, "students": 18, "rate": 38.9}, "605": {"errors": 10, "students": 25, "rate": 40.0}, "606": {"errors": 6, "students": 25, "rate": 24.0}, "607": {"errors": 4, "students": 23, "rate": 17.4}, "612": {"errors": 9, "students": 25, "rate": 36.0}, "613": {"errors": 4, "students": 25, "rate": 16.0}, "616": {"errors": 7, "students": 24, "rate": 29.2}}}, {"id": "選擇13", "text": "13.若氣象預報顯示有一個「強烈颱風」正逐步逼近臺灣東部海域。此時在地面天氣圖上，臺灣東部海域會呈現何種等壓線的特徵？ (1)等壓線呈現非常稀疏且筆直的水平平行線條 (2)圍繞低氣壓中心呈現多圈、非常密集的封閉同心圓 (3)等壓線數值由颱風中心向外依次大幅度遞減 (4)天氣圖上該區域完全沒有等壓線，只標示藍色三角形符號", "total_errors": 35, "total_students": 165, "total_rate": 21.2, "classes": {"601": {"errors": 4, "students": 18, "rate": 22.2}, "605": {"errors": 4, "students": 25, "rate": 16.0}, "606": {"errors": 5, "students": 25, "rate": 20.0}, "607": {"errors": 6, "students": 23, "rate": 26.1}, "612": {"errors": 7, "students": 25, "rate": 28.0}, "613": {"errors": 3, "students": 25, "rate": 12.0}, "616": {"errors": 6, "students": 24, "rate": 25.0}}}, {"id": "是非10", "text": "安裝在工廠或住家屋頂的「無動力屋頂通風器」，是完全利用電力的旋轉來強行帶動室內與室外的空氣對流。", "total_errors": 34, "total_students": 165, "total_rate": 20.6, "classes": {"601": {"errors": 7, "students": 18, "rate": 38.9}, "605": {"errors": 5, "students": 25, "rate": 20.0}, "606": {"errors": 6, "students": 25, "rate": 24.0}, "607": {"errors": 4, "students": 23, "rate": 17.4}, "612": {"errors": 6, "students": 25, "rate": 24.0}, "613": {"errors": 3, "students": 25, "rate": 12.0}, "616": {"errors": 3, "students": 24, "rate": 12.5}}}, {"id": "選擇12", "text": "12.當兩個颱風距離足夠接近時會產生「藤原效應」。在西元 2017 年的歷史實例中，強颱「蘇拉」主導了互動，並最終將弱颱「谷超」的環流結構完全併入。這屬於藤原效應的哪一種情形？ (1)兩個颱風強度相當，像兩位舞者互繞旋轉 (2)強颱變強，弱颱變更弱，且強颱將弱颱環流結構吞併  (3)兩個颱風在接近後，互相排斥並朝相反方向分離  (4)一個颱風分裂成兩個颱風，並向不同海域前進", "total_errors": 32, "total_students": 165, "total_rate": 19.4, "classes": {"601": {"errors": 3, "students": 18, "rate": 16.7}, "605": {"errors": 3, "students": 25, "rate": 12.0}, "606": {"errors": 4, "students": 25, "rate": 16.0}, "607": {"errors": 5, "students": 23, "rate": 21.7}, "612": {"errors": 5, "students": 25, "rate": 20.0}, "613": {"errors": 5, "students": 25, "rate": 20.0}, "616": {"errors": 7, "students": 24, "rate": 29.2}}}, {"id": "選擇6", "text": "6.每當氣象播報員預報「冷鋒過境臺灣」時，臺灣各地的天氣在冷鋒通過「後」，通常會發生什麼變化？  (1)氣溫開始下降，通常造成寒冷天氣  (2)氣溫會迅速上升，轉為晴朗炎熱天氣  (3)氣壓急劇下降，風勢完全停止吹拂   (4)天空完全無雲，並吹起溫暖的西南風", "total_errors": 31, "total_students": 165, "total_rate": 18.8, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 3, "students": 25, "rate": 12.0}, "606": {"errors": 5, "students": 25, "rate": 20.0}, "607": {"errors": 4, "students": 23, "rate": 17.4}, "612": {"errors": 4, "students": 25, "rate": 16.0}, "613": {"errors": 4, "students": 25, "rate": 16.0}, "616": {"errors": 9, "students": 24, "rate": 37.5}}}, {"id": "選擇14", "text": "14.六年級的阿光在生活中觀察到許多現象，請問下列哪一個現象最適合用「氣體熱脹冷縮」的原理來解釋？ (1)凹陷的乒乓球泡熱水後恢復原狀 (2)用打氣筒將空氣打入氣球後，氣球膨脹變大  (3)酒精溫度計隨溫度變化而上升或下降  (4)橋梁和橋梁連結處之間會保留縫隙", "total_errors": 31, "total_students": 165, "total_rate": 18.8, "classes": {"601": {"errors": 6, "students": 18, "rate": 33.3}, "605": {"errors": 4, "students": 25, "rate": 16.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 6, "students": 23, "rate": 26.1}, "612": {"errors": 5, "students": 25, "rate": 20.0}, "613": {"errors": 4, "students": 25, "rate": 16.0}, "616": {"errors": 5, "students": 24, "rate": 20.8}}}, {"id": "選擇15", "text": "15.固體、液體和氣體都有熱脹冷縮的物理性質。請問在「相同溫度變化」的條件下，哪一種狀態的物質其「體積膨脹程度」最為明顯？ (1)固體     (2)液體 (3)氣體  (4)三種狀態膨脹程度完全相同", "total_errors": 29, "total_students": 165, "total_rate": 17.6, "classes": {"601": {"errors": 3, "students": 18, "rate": 16.7}, "605": {"errors": 6, "students": 25, "rate": 24.0}, "606": {"errors": 4, "students": 25, "rate": 16.0}, "607": {"errors": 7, "students": 23, "rate": 30.4}, "612": {"errors": 4, "students": 25, "rate": 16.0}, "613": {"errors": 2, "students": 25, "rate": 8.0}, "616": {"errors": 3, "students": 24, "rate": 12.5}}}, {"id": "是非8", "text": "熱在傳播時，通常會從溫度高的地方傳到溫度低的地方，直到兩者的溫度達到平衡為止。", "total_errors": 26, "total_students": 165, "total_rate": 15.8, "classes": {"601": {"errors": 4, "students": 18, "rate": 22.2}, "605": {"errors": 5, "students": 25, "rate": 20.0}, "606": {"errors": 3, "students": 25, "rate": 12.0}, "607": {"errors": 6, "students": 23, "rate": 26.1}, "612": {"errors": 4, "students": 25, "rate": 16.0}, "613": {"errors": 2, "students": 25, "rate": 8.0}, "616": {"errors": 2, "students": 24, "rate": 8.3}}}, {"id": "選擇16", "text": "16.在課堂「固體的熱脹冷縮」實驗中，常溫下銅球剛好能穿過銅環。如果我們「只用火源加熱銅環（不加熱銅球）」，再試著用常溫的銅球穿過銅環，結果會如何？ (1)銅球更難穿過去，因為銅環受熱膨脹，中間的孔徑會收縮變小 (2)銅環因受熱其重量會劇烈增加，導致銅球在穿過時直接卡住 (3)銅環受熱融化成液態銅，實驗無法進行 (4)銅球能更容易地穿過銅環，因為銅環受熱整體膨脹，中間圓孔孔徑也隨之變大", "total_errors": 26, "total_students": 165, "total_rate": 15.8, "classes": {"601": {"errors": 5, "students": 18, "rate": 27.8}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 3, "students": 23, "rate": 13.0}, "612": {"errors": 5, "students": 25, "rate": 20.0}, "613": {"errors": 6, "students": 25, "rate": 24.0}, "616": {"errors": 4, "students": 24, "rate": 16.7}}}, {"id": "配合3-1", "text": "請仔細觀察圖中標示 (1)～(5) 的天氣符號位置，並從下方的參考選項中選出正確的天氣系統名稱，並將對應的英文代號填在答案卷上：A低氣壓中心 B高氣壓中心 C冷鋒 D暖鋒 E滯留鋒", "total_errors": 24, "total_students": 165, "total_rate": 14.5, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 8, "students": 25, "rate": 32.0}, "606": {"errors": 4, "students": 25, "rate": 16.0}, "607": {"errors": 4, "students": 23, "rate": 17.4}, "612": {"errors": 2, "students": 25, "rate": 8.0}, "613": {"errors": 2, "students": 25, "rate": 8.0}, "616": {"errors": 2, "students": 24, "rate": 8.3}}}, {"id": "選擇23", "text": "23.「綠建築」提倡生態、節能、減廢與健康。在政府推廣的「綠建築九大指標」中，請問不包含下列哪一個指標？ (1)智慧科技全自動防盜 (2)生物多樣化與綠化 (3)二氧化碳減量 (4)水資源、污水與垃圾改善", "total_errors": 22, "total_students": 165, "total_rate": 13.3, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 4, "students": 25, "rate": 16.0}, "606": {"errors": 3, "students": 25, "rate": 12.0}, "607": {"errors": 3, "students": 23, "rate": 13.0}, "612": {"errors": 5, "students": 25, "rate": 20.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 4, "students": 24, "rate": 16.7}}}, {"id": "配合3-2", "text": "請仔細觀察圖中標示 (1)～(5) 的天氣符號位置，並從下方的參考選項中選出正確的天氣系統名稱，並將對應的英文代號填在答案卷上：A低氣壓中心 B高氣壓中心 C冷鋒 D暖鋒 E滯留鋒", "total_errors": 22, "total_students": 165, "total_rate": 13.3, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 6, "students": 25, "rate": 24.0}, "606": {"errors": 4, "students": 25, "rate": 16.0}, "607": {"errors": 4, "students": 23, "rate": 17.4}, "612": {"errors": 2, "students": 25, "rate": 8.0}, "613": {"errors": 2, "students": 25, "rate": 8.0}, "616": {"errors": 2, "students": 24, "rate": 8.3}}}, {"id": "是非1", "text": "當我們人在山腳下觀察山腰時，山腰上聚集的「雲」，當我們走進該處時，身處其中則稱為「霧」。", "total_errors": 21, "total_students": 165, "total_rate": 12.7, "classes": {"601": {"errors": 3, "students": 18, "rate": 16.7}, "605": {"errors": 5, "students": 25, "rate": 20.0}, "606": {"errors": 0, "students": 25, "rate": 0.0}, "607": {"errors": 5, "students": 23, "rate": 21.7}, "612": {"errors": 5, "students": 25, "rate": 20.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 3, "students": 24, "rate": 12.5}}}, {"id": "是非3", "text": "在臺灣，秋季和冬季交替時，最常受到太平洋地區暖氣團的影響，使天氣變得很寒冷。", "total_errors": 21, "total_students": 165, "total_rate": 12.7, "classes": {"601": {"errors": 4, "students": 18, "rate": 22.2}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 5, "students": 25, "rate": 20.0}, "607": {"errors": 2, "students": 23, "rate": 8.7}, "612": {"errors": 5, "students": 25, "rate": 20.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 3, "students": 24, "rate": 12.5}}}, {"id": "選擇22", "text": "22.在「冷熱空氣對流」的科學探討中，我們將兩個廣口瓶口對口。若下方的廣口瓶是「加熱且裝有煙霧的熱瓶」，上方的廣口瓶是「不裝煙霧的冷瓶」。移開中間隔板後，瓶內煙霧將如何移動？這證實了什麼？ (1)煙霧會一直停留在下瓶完全不動，因為熱空氣比冷空氣重 (2)煙霧會立刻往下沉澱，證明熱空氣體積收縮變重而下降 (3)煙霧在瓶中向四周外漏，代表熱空氣不受任何重力與氣壓影響 (4)煙霧會迅速向上流動並注滿上方的冷瓶，證明熱空氣受熱膨脹變輕而上升，上方冷空氣體積收縮變小而下降，形成了對流", "total_errors": 21, "total_students": 165, "total_rate": 12.7, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 4, "students": 25, "rate": 16.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 2, "students": 23, "rate": 8.7}, "612": {"errors": 7, "students": 25, "rate": 28.0}, "613": {"errors": 3, "students": 25, "rate": 12.0}, "616": {"errors": 2, "students": 24, "rate": 8.3}}}, {"id": "選擇19", "text": "19.夏天在教室開冷氣時，老師常建議將冷氣機的風口往上吹，這樣整間教室會涼快得比較均勻。這是利用了流體熱傳播的什麼性質？ (1)冷空氣會膨脹而變輕 (2)冷空氣會下降，較熱空氣上升而產生熱輻射 (3)冷空氣體積收縮而下降，熱空氣體積膨脹而上升的熱對流原理 (4)熱空氣比較重，會沉澱在教室下方", "total_errors": 20, "total_students": 165, "total_rate": 12.1, "classes": {"601": {"errors": 4, "students": 18, "rate": 22.2}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 4, "students": 23, "rate": 17.4}, "612": {"errors": 3, "students": 25, "rate": 12.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 5, "students": 24, "rate": 20.8}}}, {"id": "選擇9", "text": "9.關於「颱風」的形成與定義，下列哪一個敘述是正確的？(1)當熱帶低氣壓中心附近的最大風速達到一定標準時，就會被稱為颱風 (2)颱風是由熱帶海洋上的「高氣壓」發展而來的  (3)只要陸地上出現強風大雨，就可以直接稱為颱風 (4)任何地方產生的低氣壓，不管風速大小都是颱風", "total_errors": 19, "total_students": 165, "total_rate": 11.5, "classes": {"601": {"errors": 3, "students": 18, "rate": 16.7}, "605": {"errors": 3, "students": 25, "rate": 12.0}, "606": {"errors": 4, "students": 25, "rate": 16.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 4, "students": 25, "rate": 16.0}, "613": {"errors": 3, "students": 25, "rate": 12.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "選擇11", "text": "11.小南收集了中央氣象署發布的「颱風概況表」和「颱風路徑圖」。請問在這些直接提供的官方資料中，「無法」直接得知哪一項訊息？ (1)颱風來襲期間造成的全臺農林漁牧損失總金額  (2)颱風的名稱、編號與生成地點  (3)颱風的最大強度與近中心最大風速  (4)侵（近）臺日期與登陸地段", "total_errors": 19, "total_students": 165, "total_rate": 11.5, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 4, "students": 25, "rate": 16.0}, "606": {"errors": 7, "students": 25, "rate": 28.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 4, "students": 25, "rate": 16.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "選擇7", "text": "7.氣象人員繪製地面天氣圖時，會用許多線條表示氣壓。若發現某一區域的等壓線畫得「非常多而且非常密集」，代表什麼意思？  (1)該區域氣溫非常炎熱，地表水大量蒸發  (2)該區域雲層完全散去，將是無風的晴天   (3)該地區地勢非常高，高空氣壓數值相同  (4)該區域的氣壓差距很大，風勢會較為強勁", "total_errors": 18, "total_students": 165, "total_rate": 10.9, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 3, "students": 25, "rate": 12.0}, "607": {"errors": 3, "students": 23, "rate": 13.0}, "612": {"errors": 5, "students": 25, "rate": 20.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 2, "students": 24, "rate": 8.3}}}, {"id": "選擇20", "text": "20.關於熱的傳播方式中的「熱輻射」，下列敘述何者正確？ (1)必須靠物體直接接觸，才能將熱能傳播過去 (2)只能靠空氣或水的流動來傳播熱能 (3)不需要依靠任何物質，就能直接向四面八方傳播熱能 (4)熱輻射傳播的速度極慢，只會發生在太陽上", "total_errors": 14, "total_students": 165, "total_rate": 8.5, "classes": {"601": {"errors": 3, "students": 18, "rate": 16.7}, "605": {"errors": 0, "students": 25, "rate": 0.0}, "606": {"errors": 4, "students": 25, "rate": 16.0}, "607": {"errors": 2, "students": 23, "rate": 8.7}, "612": {"errors": 5, "students": 25, "rate": 20.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "配合1-4", "text": "請根據各題的生活情境，判斷其主要運用的熱傳播方式，並將對應的英文代號填在答案卷上：A熱的傳導 B熱的對流 C熱的輻射 (4)屋頂安裝屋頂通風器，並且讓通風器葉片轉動", "total_errors": 14, "total_students": 165, "total_rate": 8.5, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 3, "students": 25, "rate": 12.0}, "607": {"errors": 2, "students": 23, "rate": 8.7}, "612": {"errors": 4, "students": 25, "rate": 16.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "是非2", "text": "大自然風吹起的小沙塵可以當作「凝結核」，幫助空氣中的水蒸氣遇冷附著並變成小水滴；但是工廠排放出來的煙霧和汙染微粒，因為太髒了，水蒸氣遇冷不會附著在它們身上，所以不能當作凝結核。", "total_errors": 13, "total_students": 165, "total_rate": 7.9, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 4, "students": 25, "rate": 16.0}, "606": {"errors": 2, "students": 25, "rate": 8.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 2, "students": 25, "rate": 8.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 2, "students": 24, "rate": 8.3}}}, {"id": "選擇3", "text": "3.露和霜都是大自然中常見的水循環形態。關於「露」和「霜」的比較，下列哪一項敘述是正確的？  (1)露是冰晶固態的水，霜是液態的水 (2)露是在氣溫極高時凝結，霜是在常溫下形成 (3)露和霜都是遇冷形成的，主要的區別在於形成的環境溫度是否低於0℃  (4)露是高空小水滴降落，霜是地表水蒸發", "total_errors": 12, "total_students": 165, "total_rate": 7.3, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 3, "students": 25, "rate": 12.0}, "607": {"errors": 4, "students": 23, "rate": 17.4}, "612": {"errors": 0, "students": 25, "rate": 0.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "選擇4", "text": "4.在地面天氣圖中，常會看到大寫英文字母「H」和「L」。請問「H」代表的是什麼氣象中心？ (1)低氣壓中心  (2)颱風眼中心  (3)豪雨警戒中心  (4)高氣壓中心", "total_errors": 12, "total_students": 165, "total_rate": 7.3, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 4, "students": 25, "rate": 16.0}, "606": {"errors": 4, "students": 25, "rate": 16.0}, "607": {"errors": 2, "students": 23, "rate": 8.7}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "選擇8", "text": "8.颱風常給臺灣帶來豐沛的水資源或劇烈的風雨災害。請問颱風這種劇烈的熱帶氣旋，通常是在哪裡發展而成的？  (1)寒冷乾燥的西伯利亞陸地   (2)蒙古高原的廣大沙漠地區  (3)溫暖而潮溼的熱帶海洋上  (4)喜馬拉雅山等極高海拔的高山上", "total_errors": 12, "total_students": 165, "total_rate": 7.3, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 1, "students": 25, "rate": 4.0}, "606": {"errors": 5, "students": 25, "rate": 20.0}, "607": {"errors": 0, "students": 23, "rate": 0.0}, "612": {"errors": 3, "students": 25, "rate": 12.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "選擇2", "text": "2.在進行「模擬雲和霧的形成」實驗時，我們會把點燃線香的煙霧放進瓶子裡。請問，放入 「線香煙霧」的主要目的是什麼？ (1) 提高瓶內熱水的溫度  (2) 當作「凝結核」，幫助水蒸氣凝結成小水滴  (3) 增加瓶子內部的空氣壓力  (4) 吸收瓶內多餘的水氣，保持乾燥", "total_errors": 11, "total_students": 165, "total_rate": 6.7, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 4, "students": 25, "rate": 16.0}, "606": {"errors": 2, "students": 25, "rate": 8.0}, "607": {"errors": 0, "students": 23, "rate": 0.0}, "612": {"errors": 2, "students": 25, "rate": 8.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "選擇5", "text": "5.大氣壓力會隨著空氣密度與高度變化。請問在氣象觀測與地面天氣圖中，最常用來標示氣壓值的單位是什麼？  (1)毫米(mm)  (2)百帕(hPa)   (3)攝氏度(℃)  (4)公斤(kg)", "total_errors": 11, "total_students": 165, "total_rate": 6.7, "classes": {"601": {"errors": 0, "students": 18, "rate": 0.0}, "605": {"errors": 4, "students": 25, "rate": 16.0}, "606": {"errors": 2, "students": 25, "rate": 8.0}, "607": {"errors": 3, "students": 23, "rate": 13.0}, "612": {"errors": 2, "students": 25, "rate": 8.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "選擇21", "text": "21.日常生活中常常可以看見「熱對流」現象的應用。下列哪一個生活例子不是利用熱對流的原理？ (1)煮湯時從鍋子底部加熱，讓熱水往上升、  冷水往下沉形成循環 (2)天氣熱時，用水龍頭的涼水沖洗臉部來降溫 (3)房屋頂部開設散熱天窗，讓室內積聚的熱空氣上升排出 (4)將房間內的冷氣機安裝在靠近天花板的高處", "total_errors": 11, "total_students": 165, "total_rate": 6.7, "classes": {"601": {"errors": 3, "students": 18, "rate": 16.7}, "605": {"errors": 1, "students": 25, "rate": 4.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 3, "students": 25, "rate": 12.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "配合1-3", "text": "請根據各題的生活情境，判斷其主要運用的熱傳播方式，並將對應的英文代號填在答案卷上：A熱的傳導 B熱的對流 C熱的輻射 (3)太陽的熱能傳播到地球上", "total_errors": 10, "total_students": 165, "total_rate": 6.1, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 0, "students": 25, "rate": 0.0}, "606": {"errors": 2, "students": 25, "rate": 8.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 3, "students": 25, "rate": 12.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "配合2-1", "text": "請閱讀各題敘述，判斷『 』標示的名詞是屬於水的哪一種形態，並將對應的英文代號填在答案卷上：A固態  B液態  C氣態 (1)冬天寒流來襲時，高山樹枝上附著的『霜』", "total_errors": 10, "total_students": 165, "total_rate": 6.1, "classes": {"601": {"errors": 2, "students": 18, "rate": 11.1}, "605": {"errors": 1, "students": 25, "rate": 4.0}, "606": {"errors": 4, "students": 25, "rate": 16.0}, "607": {"errors": 0, "students": 23, "rate": 0.0}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "配合3-4", "text": "請仔細觀察圖中標示 (1)～(5) 的天氣符號位置，並從下方的參考選項中選出正確的天氣系統名稱，並將對應的英文代號填在答案卷上：A低氣壓中心 B高氣壓中心 C冷鋒 D暖鋒 E滯留鋒", "total_errors": 10, "total_students": 165, "total_rate": 6.1, "classes": {"601": {"errors": 0, "students": 18, "rate": 0.0}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 3, "students": 25, "rate": 12.0}, "607": {"errors": 4, "students": 23, "rate": 17.4}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "配合3-5", "text": "請仔細觀察圖中標示 (1)～(5) 的天氣符號位置，並從下方的參考選項中選出正確的天氣系統名稱，並將對應的英文代號填在答案卷上：A低氣壓中心 B高氣壓中心 C冷鋒 D暖鋒 E滯留鋒", "total_errors": 10, "total_students": 165, "total_rate": 6.1, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 2, "students": 25, "rate": 8.0}, "607": {"errors": 4, "students": 23, "rate": 17.4}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "是非9", "text": "外送熱披薩時使用的厚瓦楞紙盒與專用外送保溫袋，能有效減緩熱的傳導與對流，減少熱量散失，因此具有保溫效果。", "total_errors": 9, "total_students": 165, "total_rate": 5.5, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 2, "students": 23, "rate": 8.7}, "612": {"errors": 0, "students": 25, "rate": 0.0}, "613": {"errors": 2, "students": 25, "rate": 8.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "配合2-4", "text": "請閱讀各題敘述，判斷『 』標示的名詞是屬於水的哪一種形態，並將對應的英文代號填在答案卷上：A固態  B液態  C氣態 (4)曬乾衣服時，水分蒸發到空氣中的『水蒸氣』", "total_errors": 9, "total_students": 165, "total_rate": 5.5, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 1, "students": 25, "rate": 4.0}, "606": {"errors": 4, "students": 25, "rate": 16.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "選擇17", "text": "17.將金屬鐵湯匙的一端放入滾燙的熱湯中，沒過多久，露在湯外沒有接觸湯的另一端手柄也變得很燙。請問這種熱傳播方式稱為什麼？ (1)傳導    (2)對流  (3)輻射  (4)反射", "total_errors": 8, "total_students": 165, "total_rate": 4.8, "classes": {"601": {"errors": 0, "students": 18, "rate": 0.0}, "605": {"errors": 1, "students": 25, "rate": 4.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 0, "students": 23, "rate": 0.0}, "612": {"errors": 3, "students": 25, "rate": 12.0}, "613": {"errors": 2, "students": 25, "rate": 8.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "配合1-5", "text": "請根據各題的生活情境，判斷其主要運用的熱傳播方式，並將對應的英文代號填在答案卷上：A熱的傳導 B熱的對流 C熱的輻射 (5)運用冰敷袋降低皮膚的溫度", "total_errors": 8, "total_students": 165, "total_rate": 4.8, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 2, "students": 25, "rate": 8.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 2, "students": 24, "rate": 8.3}}}, {"id": "是非6", "text": "酒精溫度計中的紅色液體在量測熱水時會上升，是因為溫度計管內的酒精受熱後體積膨脹，使液面升高的結果。", "total_errors": 7, "total_students": 165, "total_rate": 4.2, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 1, "students": 25, "rate": 4.0}, "606": {"errors": 3, "students": 25, "rate": 12.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 0, "students": 25, "rate": 0.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "選擇18", "text": "18.小彤想挑選一隻用來烹調小火鍋的餐具，希望手握的地方「熱傳導最慢、最不燙手」。請問她挑選哪一種材質做的湯匙最好？ (1)白銀湯匙      (2)黃銅湯匙  (3)純鋁湯匙  (4)木質湯匙", "total_errors": 7, "total_students": 165, "total_rate": 4.2, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 3, "students": 25, "rate": 12.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 0, "students": 23, "rate": 0.0}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "配合1-2", "text": "請根據各題的生活情境，判斷其主要運用的熱傳播方式，並將對應的英文代號填在答案卷上：A熱的傳導 B熱的對流 C熱的輻射 (2)在海邊沙灘上，待在撐起的大陽傘下比較涼爽", "total_errors": 7, "total_students": 165, "total_rate": 4.2, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 3, "students": 25, "rate": 12.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 0, "students": 23, "rate": 0.0}, "612": {"errors": 2, "students": 25, "rate": 8.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "配合3-3", "text": "請仔細觀察圖中標示 (1)～(5) 的天氣符號位置，並從下方的參考選項中選出正確的天氣系統名稱，並將對應的英文代號填在答案卷上：A低氣壓中心 B高氣壓中心 C冷鋒 D暖鋒 E滯留鋒", "total_errors": 7, "total_students": 165, "total_rate": 4.2, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 1, "students": 25, "rate": 4.0}, "606": {"errors": 3, "students": 25, "rate": 12.0}, "607": {"errors": 0, "students": 23, "rate": 0.0}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}, {"id": "是非7", "text": "在「熱水、常溫水、冷水」中進行氣體熱脹冷縮實驗，錐形瓶口的橡膠氣球在瓶子浸入「冷水」中時，氣球會膨脹得最大。", "total_errors": 4, "total_students": 165, "total_rate": 2.4, "classes": {"601": {"errors": 0, "students": 18, "rate": 0.0}, "605": {"errors": 0, "students": 25, "rate": 0.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "選擇1", "text": "1.關於大自然中的「雲」和「霧」，下列哪一個敘述才是正確的？ (1) 雲是看不見的水蒸氣，霧是看得見的小水滴  (2) 雲只會出現在夏天，霧只會出現在冬天 (3) 雲的形成需要凝結核，霧的形成則不需要凝結核 (4) 雲和霧本質相同，都是由微小的水滴或冰晶組成的", "total_errors": 4, "total_students": 165, "total_rate": 2.4, "classes": {"601": {"errors": 0, "students": 18, "rate": 0.0}, "605": {"errors": 1, "students": 25, "rate": 4.0}, "606": {"errors": 2, "students": 25, "rate": 8.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 0, "students": 25, "rate": 0.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "配合1-1", "text": "請根據各題的生活情境，判斷其主要運用的熱傳播方式，並將對應的英文代號填在答案卷上：A熱的傳導 B熱的對流 C熱的輻射 (1)冷氣機出風口裝置在室內較高位置", "total_errors": 4, "total_students": 165, "total_rate": 2.4, "classes": {"601": {"errors": 0, "students": 18, "rate": 0.0}, "605": {"errors": 0, "students": 25, "rate": 0.0}, "606": {"errors": 2, "students": 25, "rate": 8.0}, "607": {"errors": 1, "students": 23, "rate": 4.3}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "配合2-2", "text": "請閱讀各題敘述，判斷『 』標示的名詞是屬於水的哪一種形態，並將對應的英文代號填在答案卷上：A固態  B液態  C氣態 (2)清晨在葉片表面發現的『露』", "total_errors": 4, "total_students": 165, "total_rate": 2.4, "classes": {"601": {"errors": 0, "students": 18, "rate": 0.0}, "605": {"errors": 1, "students": 25, "rate": 4.0}, "606": {"errors": 1, "students": 25, "rate": 4.0}, "607": {"errors": 0, "students": 23, "rate": 0.0}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 1, "students": 25, "rate": 4.0}, "616": {"errors": 0, "students": 24, "rate": 0.0}}}, {"id": "配合2-3", "text": "請閱讀各題敘述，判斷『 』標示的名詞是屬於水的哪一種形態，並將對應的英文代號填在答案卷上：A固態  B液態  C氣態 (3)夏天午後對流旺盛落下的『冰雹』", "total_errors": 3, "total_students": 165, "total_rate": 1.8, "classes": {"601": {"errors": 1, "students": 18, "rate": 5.6}, "605": {"errors": 0, "students": 25, "rate": 0.0}, "606": {"errors": 0, "students": 25, "rate": 0.0}, "607": {"errors": 0, "students": 23, "rate": 0.0}, "612": {"errors": 1, "students": 25, "rate": 4.0}, "613": {"errors": 0, "students": 25, "rate": 0.0}, "616": {"errors": 1, "students": 24, "rate": 4.2}}}];
+
+        // 取得所有班級名稱 (動態抓取 keys)
+        const classes = Object.keys(reportData[0].classes).sort();
+        
+        // 渲染表格 Header (動態插入班級欄位)
+        const classHeadersPlaceholder = document.getElementById('classHeadersPlaceholder');
+        classHeadersPlaceholder.outerHTML = classes.map(c => `<th>${c}班 錯題率</th>`).join('');
+
+        // 初始化圖表設定與資料
+        const labels = reportData.map(d => d.id);
+        const overallRates = reportData.map(d => d.total_rate);
+        let myChart = null;
+
+        function initChart() {
+            const ctx = document.getElementById('errorRateChart').getContext('2d');
+            myChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '全校錯題率 (%)',
+                        data: overallRates,
+                        backgroundColor: 'rgba(79, 70, 229, 0.7)',
+                        hoverBackgroundColor: 'rgba(79, 70, 229, 1)',
+                        borderRadius: 4,
+                        borderWidth: 1,
+                        borderColor: 'rgba(79, 70, 229, 0.9)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.9)',
+                            titleFont: { size: 14, family: "'Segoe UI', sans-serif" },
+                            bodyFont: { size: 13, family: "'Segoe UI', sans-serif" },
+                            padding: 12,
+                            callbacks: {
+                                title: function(context) {
+                                    return '【題號：' + context[0].label + '】';
+                                },
+                                // 若有勾選顯示題目，則在 Tooltip 插入題目內容 (會進行換行排版)
+                                beforeBody: function(context) {
+                                    const isShowText = document.getElementById('showTextCheckbox').checked;
+                                    if(isShowText) {
+                                        const text = reportData[context[0].dataIndex].text;
+                                        let wrapped = ['[ 題目內容 ]'];
+                                        // 簡單的文字斷行處理，讓 Tooltip 不會過長
+                                        for(let i=0; i<text.length; i+=26){
+                                            wrapped.push(text.substring(i, i+26));
+                                        }
+                                        wrapped.push(' '); // 空行分隔
+                                        return wrapped;
+                                    }
+                                    return null;
+                                },
+                                label: function(context) {
+                                    const data = reportData[context.dataIndex];
+                                    return `全校總計: 錯題率 ${data.total_rate}% (${data.total_errors}人 / 共${data.total_students}人)`;
+                                },
+                                // 顯示精準的各班錯題人數與比例
+                                afterLabel: function(context) {
+                                    const data = reportData[context.dataIndex];
+                                    let details = ['--------------------------------'];
+                                    classes.forEach(c => {
+                                        const cData = data.classes[c];
+                                        details.push(`📍 ${c}班: 錯題率 ${cData.rate}% (${cData.errors}人 / 共${cData.students}人)`);
+                                    });
+                                    return details;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: '錯題率 (%)', font: { weight: 'bold' } }
+                        },
+                        x: {
+                            ticks: { maxRotation: 45, minRotation: 45 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 渲染資料表格
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            reportData.forEach((d, index) => {
+                const tr = document.createElement('tr');
+                
+                // 動態組裝各班級資料欄位
+                let classHtml = '';
+                classes.forEach(c => {
+                    const cData = d.classes[c];
+                    let style = '';
+                    if(cData.rate >= 50) style = 'color: #DC2626; font-weight: bold;';
+                    else if(cData.rate >= 30) style = 'color: #D97706; font-weight: bold;';
+                    
+                    classHtml += `<td style="${style}">${cData.rate}% <span style="font-size: 0.85em; color: #6B7280;">(${cData.errors}人)</span></td>`;
+                });
+
+                // 全校錯題徽章樣式設定
+                let badgeClass = 'badge';
+                if(d.total_rate >= 50) badgeClass += ''; 
+                else if (d.total_rate >= 20) badgeClass += ' warning';
+                else badgeClass += ' good';
+
+                tr.innerHTML = `
+                    <td><strong>${index + 1}</strong></td>
+                    <td style="font-weight: 600; color: var(--primary);">${d.id}</td>
+                    <td class="question-col">${d.text}</td>
+                    <td><span class="${badgeClass}">${d.total_rate}%</span></td>
+                    <td>${d.total_errors} / ${d.total_students}</td>
+                    ${classHtml}
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 監聽「顯示題目內容」勾選框切換事件
+        document.getElementById('showTextCheckbox').addEventListener('change', function() {
+            const container = document.getElementById('tableContainer');
+            // 切換 Table 中的題目欄位顯示/隱藏
+            if(this.checked) {
+                container.classList.add('show-text');
+            } else {
+                container.classList.remove('show-text');
+            }
+            // 不需要重新繪製 Chart，Tooltip 會在觸發 Hover 時自動讀取 Checkbox 的狀態
+        });
+
+        // 啟動渲染
+        initChart();
+        renderTable();
+    </script>
+</body>
+</html>
